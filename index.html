@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>자금 소진(런웨이) 대시보드</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="data.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <h1>자금 소진(런웨이) 대시보드</h1>
+    <div class="sub" id="metaLine">데이터 없음</div>
+  </div>
+  <div class="actions no-print">
+    <label class="btn primary">기초 데이터 업로드 (CSV/JSON)<input type="file" id="fileInput" accept=".csv,.json,text/csv,application/json" hidden></label>
+    <button class="btn" id="btnCsv">기초 데이터 CSV</button>
+    <button class="btn" id="btnCsvEmpty">빈 CSV 템플릿</button>
+    <button class="btn" id="btnJson">기초 데이터 JSON</button>
+    <button class="btn" id="btnClear" title="브라우저에 저장된 업로드 기초 데이터를 삭제">업로드 데이터 삭제</button>
+    <select id="unitSel" class="btn" title="표시 단위"><option value="m">백만원</option><option value="w">만원</option></select>
+    <button class="btn" onclick="window.print()">인쇄</button>
+  </div>
+</header>
+
+<nav class="tabs no-print" id="tabs">
+  <button class="tab active" data-tab="dash">대시보드</button>
+  <button class="tab" data-tab="rec">기록 <span id="recCount" class="badge"></span></button>
+  <span class="storeinfo" id="storeInfo"></span>
+</nav>
+<div id="baseBanner" class="banner hidden"></div>
+<div id="backupBanner" class="banner warn hidden"></div>
+<div id="emptyState" class="card empty hidden">
+  <h2>데이터를 불러오세요</h2>
+  <p>이 페이지에는 데이터가 포함되어 있지 않습니다(업로드 전용 모드). 상단 <b>기초 데이터 업로드</b>로 CSV 또는 JSON 파일을 선택하세요. 올린 기초 데이터는 이 브라우저에 저장되어 다음에 열 때도 유지됩니다(상단 "업로드 데이터 삭제"로 지움).
+  파일은 브라우저 안에서만 처리되며 서버로 전송되지 않습니다.</p>
+  <p><button class="btn" id="btnCsvEmpty2">빈 CSV 템플릿 받기</button></p>
+</div>
+
+<main id="app" class="hidden">
+  <div id="tab-dash">
+  <section class="kpis" id="kpis"></section>
+  <div id="userNote" class="note usernote hidden"></div>
+
+  <section class="grid2">
+    <div class="card controls no-print-bg" id="controls">
+      <h2>예측 설정</h2>
+      <div class="ctl"><label>예측 방법</label>
+        <select id="method">
+          <option value="a">(a) 최근 N개월 평균 Net burn</option>
+          <option value="b">(b) Gross burn · 수입 0 가정</option>
+          <option value="c">(c) 선형 추세 (지출·수입 각각 최소제곱)</option>
+          <option value="d">(d) 파일의 4분기 계획</option>
+        </select></div>
+      <div class="ctl"><label>평균 기간 N (개월) <output id="nOut"></output></label><input type="range" id="nWin" min="1" max="9" step="1"></div>
+      <div class="ctl"><label>추세 기간 (개월, 방법 c) <output id="tOut"></output></label><input type="range" id="tWin" min="3" max="9" step="1"></div>
+      <div class="ctl"><label>현금 기준</label>
+        <select id="basis"><option value="free">가용현금 (제한성 현금 제외)</option><option value="total">총현금</option></select></div>
+      <div class="ctl chk"><label><input type="checkbox" id="unconf"> 용도 미확인 계좌도 제한성으로 간주</label></div>
+      <div class="ctl chk"><label><input type="checkbox" id="exFin"> 차입 입금은 과거 burn 계산에서 제외</label></div>
+      <hr>
+      <div class="ctl"><label>지원금 입금액 <output id="gOut"></output></label><input type="range" id="grantPct" min="0" max="200" step="5"></div>
+      <div class="ctl"><label>지원금 입금 지연 <output id="dOut"></output></label><input type="range" id="grantDelay" min="0" max="6" step="1"></div>
+      <div class="ctl"><label>지출 증감 <output id="eOut"></output></label><input type="range" id="expPct" min="-50" max="50" step="1"></div>
+      <div class="ctl chk"><label><input type="checkbox" id="exOne"> 일회성 지출 제외 (과거 평균·추세 계산 시)</label>
+        <div id="oneoffList" class="oneoffs"></div></div>
+      <hr>
+      <div class="ctl"><label>추가 자금조달 (만원)</label><input type="number" id="fundAmt" min="0" step="1000" placeholder="예: 30000 = 3억"></div>
+      <div class="ctl"><label>조달 시점 (월말 입금)</label><select id="fundMonth"></select></div>
+      <div class="ctl"><label>최소 유지 현금 (만원)</label><input type="number" id="minCash" min="0" step="500" placeholder="0"></div>
+      <div class="ctl"><label>전망 기간 <output id="hOut"></output></label><input type="range" id="horizon" min="3" max="24" step="1"></div>
+      <button class="btn small" id="btnReset">설정 초기화</button>
+    </div>
+    <div class="card">
+      <h2>월말 현금잔액: 실적 + 전망 <span class="hint" id="bandNote"></span></h2>
+      <div class="chartbox tall"><canvas id="balChart"></canvas></div>
+      <div id="forecastNote" class="note"></div>
+    </div>
+  </section>
+
+  <section class="grid2">
+    <div class="card"><h2>항목별 지출 (월별 누적)</h2><div class="chartbox"><canvas id="expChart"></canvas></div></div>
+    <div class="card"><h2>수입 vs 지출 · Net burn</h2><div class="chartbox"><canvas id="ieChart"></canvas></div>
+      <div class="note" id="ieNote"></div></div>
+  </section>
+
+  <section class="grid2">
+    <div class="card"><h2>계좌별 잔액 <span class="hint" id="accDate"></span></h2><div class="chartbox"><canvas id="accChart"></canvas></div><div id="accTable"></div></div>
+    <div class="card" id="warnCard"><h2>데이터 점검</h2><ul id="warnList"></ul></div>
+  </section>
+  <section class="card" id="dueCard"><h2>다가오는 납기 · 자동이체 <span class="hint" id="dueRange"></span></h2>
+      <div class="ctl inline no-print"><label><input type="radio" name="dueBase" value="asof" checked> 데이터 기준일부터</label>
+        <label><input type="radio" name="dueBase" value="today"> 오늘부터</label>
+        <select id="dueDays"><option value="31">31일</option><option value="62" selected>2개월</option><option value="92">3개월</option></select></div>
+      <div id="dueList" class="duelist"></div>
+  </section>
+
+  <section class="card"><h2>월별 실적</h2><div class="tablewrap" id="monthTable"></div></section>
+  <section class="card"><h2>전망 상세</h2><div class="tablewrap" id="fcTable"></div></section>
+
+  <section class="card">
+    <details id="methods"><summary><h2 style="display:inline">예측 방법 설명 (펼치기)</h2></summary>
+      <div class="methods">
+        <p><b>공통</b> — 기준일(데이터의 마지막 일자) 현금에서 출발합니다. 기준일이 속한 달은 남은 일수 비율만큼만 흐름을 반영하고, 이후는 월 단위로 <code>월말잔액 = 전월말 − (지출 − 수입) + 추가 조달</code>을 계산합니다.
+        <b>예상 소진일</b>은 잔액이 최소 유지 현금(기본 0) 아래로 내려가는 구간에서 일자 기준 선형 보간한 날짜입니다. <b>런웨이</b> = (소진일 − 기준일) ÷ 30.44일. 카드의 "단순식"은 (현금 − 최소유지) ÷ 월 Net burn 입니다.</p>
+        <p><b>(a) 최근 N개월 평균</b> — 기준일 이전 마감된 최근 N개월의 지출·지원금·기타수입 평균을 매월 동일하게 적용 (Net burn = 지출 − 수입).</p>
+        <p><b>(b) Gross burn</b> — 같은 기간 평균 지출만 적용하고 수입은 0으로 가정한 보수적 지표.</p>
+        <p><b>(c) 선형 추세</b> — 추세 기간 동안의 월 지출, 지원금, 기타수입 각각에 최소제곱 직선을 맞춰 미래 월로 연장(음수는 0으로 제한). 변동성이 큰 데이터에서는 해석에 주의.</p>
+        <p><b>(d) 파일 계획</b> — 엑셀의 월간계획 열(기준월 이후) 지출·수입. 계획이 끝난 뒤의 달은 마지막 계획 월을 반복(표에 "반복"으로 표시). 파일 수식 경고가 있으면 아래 데이터 점검에 표시됩니다.</p>
+        <p><b>시나리오</b> — 지원금 입금액(%)은 미래 지원금에 곱하고, 지연 N개월은 지원금 흐름을 N개월 뒤로 미룹니다(기간 밖으로 밀린 금액은 제외). 지출 증감 %는 미래 지출 전체에 적용. 일회성 지출 제외는 체크한 과거 항목을 평균/추세 계산에서 뺍니다(미래에 재발하지 않는다고 가정).</p>
+        <p><b>불확실성 밴드</b> — 마감된 월의 Net burn 표준편차 σ로 ±1σ·√(경과 개월)을 잔액에 더하고 뺀 범위(약 68%). 차입 입금 월은 이상치로 σ 계산에서 제외합니다(제외 월은 차트 제목 옆에 표시). 밴드가 소진 기준선을 지나는 시점이 소진일 범위입니다.</p>
+        <p><b>한계</b> — 계좌 간 이체는 흐름에 포함되지 않고 총액만 굴립니다. 제한성 현금은 일정하다고 가정합니다. 부가세·원천세(반기납) 등 금액이 없는 납기는 예측에 별도로 반영되지 않습니다.</p>
+      </div></details>
+  </section>
+
+  </div>
+
+  <div id="tab-rec" class="hidden">
+    <section class="card privacy"><b>🔒 저장 위치:</b> 기록은 <b>이 브라우저(이 PC)의 localStorage에만</b> 저장되며 어떤 서버로도 전송되지 않습니다.
+      브라우저 데이터 삭제·시크릿 창·다른 PC/브라우저/다른 Netlify 주소에서는 보이지 않으니 <b>정기적으로 전체 내보내기</b>로 백업하세요.
+      <div class="hint" id="saveInfo"></div></section>
+    <section class="card">
+      <div class="rechead"><h2>기록</h2>
+        <div class="actions"><button class="btn primary" id="btnAddDaily">+ 일자별 기록</button><button class="btn" id="btnAddMonthly">+ 월 합계 입력</button><button class="btn" id="btnAddBal">+ 잔액확인</button></div></div>
+      <div class="ctl inline"><label>월 필터 <select id="recFilter"><option value="">전체</option></select></label><span class="hint" id="recSummary"></span></div>
+      <div class="tablewrap" id="recTable"></div>
+    </section>
+    <section class="card"><h2>계획 출금 (납기 금액 입력분 — 전망에 반영)</h2><div class="tablewrap" id="planTable"></div>
+      <div class="note">대시보드의 '다가오는 납기' 목록에서 금액을 입력하면 여기에 추가됩니다. 최근 평균(burn)에 이미 포함된 정기 비용을 또 입력하면 이중 계산될 수 있으니 부가세·원천세(반기납)처럼 평균에 없는 항목 위주로 쓰세요.</div></section>
+    <section class="card"><h2>백업 · 가져오기</h2>
+      <div class="actions wrap">
+        <button class="btn primary" id="btnExportAll">전체 내보내기 (JSON: 기초+기록)</button>
+        <button class="btn" id="btnExportRecCsv">기록만 CSV 내보내기</button>
+        <label class="btn">가져오기 (JSON/CSV)<input type="file" id="importInput" accept=".json,.csv" hidden></label>
+        <button class="btn danger" id="btnResetAll">전체 초기화</button>
+      </div>
+      <div class="note">가져오기: 전체 백업(JSON) 또는 기록 CSV를 선택하면 <b>병합</b>(같은 ID는 덮어씀) 또는 <b>대체</b>를 고를 수 있습니다. 기초 데이터 CSV/JSON을 고르면 기초 데이터로 불러옵니다.</div>
+    </section>
+  </div>
+  <footer class="foot">포트폴리오용 예시 데이터입니다. 숫자는 업로드/생성된 데이터(엑셀 캐시값)에서만 계산됩니다.</footer>
+</main>
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+  <form class="modalbox" id="entryForm" autocomplete="off">
+    <h2 id="mTitle">기록</h2>
+    <input type="hidden" id="fId">
+    <div class="frow"><label>입력 방식</label><select id="fLevel"><option value="daily">일자별</option><option value="monthly">월 합계</option></select></div>
+    <div class="frow" id="rowDate"><label>날짜</label><input type="date" id="fDate"></div>
+    <div class="frow hidden" id="rowMonth"><label>월</label><input type="month" id="fMonth"></div>
+    <div class="frow"><label>구분</label><select id="fKind"><option value="expense">지출</option><option value="income">수입</option><option value="transfer">계좌이체</option><option value="balance">잔액확인</option></select></div>
+    <div class="frow" id="rowCat"><label>항목</label><input id="fCat" list="catList" placeholder="선택 또는 직접 입력"><datalist id="catList"></datalist></div>
+    <div class="frow"><label id="lAmt">금액 (원)</label><input type="number" id="fAmt" step="1" inputmode="numeric"><span class="hint" id="amtHelp"></span></div>
+    <div class="frow" id="rowAcc"><label id="lAcc">계좌 (선택)</label><select id="fAcc"></select></div>
+    <div class="frow hidden" id="rowAcc2"><label>받는 계좌</label><select id="fAcc2"></select></div>
+    <div class="frow chk" id="rowOne"><label><input type="checkbox" id="fOne"> 일회성 지출 (burn 계산에서 제외 가능)</label></div>
+    <div class="frow"><label>메모</label><input id="fMemo" maxlength="200"></div>
+    <div class="conflict hidden" id="conflict"></div>
+    <div class="mhint hint" id="mHint"></div>
+    <div class="mbtns"><button type="button" class="btn" id="mCancel">취소</button><button type="submit" class="btn primary" id="mSave">저장</button></div>
+  </form>
+</div>
+<div id="cmodal" class="modal hidden" role="dialog" aria-modal="true"><div class="modalbox"><h2 id="cTitle"></h2><div id="cBody"></div><div class="mbtns" id="cBtns"></div></div></div>
+<div id="toast" class="toast hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>
