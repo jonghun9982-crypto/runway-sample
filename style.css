@@ -134,3 +134,13 @@ table.rec td.c-memo{min-width:10em}
   #monthTable,#fcTable{overflow-x:auto}
 }
 #planTable th,#planTable td{text-align:left}#planTable td.num,#planTable th:nth-child(3){text-align:right}#planTable td:last-child{text-align:right}
+
+.ctl.off{opacity:.45}.ctl.off input{cursor:not-allowed}
+@media print{
+  @page{size:A4;margin:12mm}
+  .grid2,section.grid2,section.grid2:nth-of-type(n+3),section.grid2:first-of-type{display:block!important}
+  .grid2>.card{width:auto!important;margin:0 0 10px}
+  .chartbox,.chartbox.tall{position:relative;height:250px!important;width:100%!important;overflow:hidden}
+  .chartbox canvas{max-width:100%!important;height:250px!important}
+  .kpis,.kpi-row{grid-template-columns:repeat(3,1fr)!important}
+}

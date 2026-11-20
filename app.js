@@ -439,6 +439,9 @@ function syncControls() {
 }
 function outputs() {
   $('#nOut').textContent = S.nWin + '개월'; $('#tOut').textContent = S.tWin + '개월'; $('#gOut').textContent = S.grantPct + '%';
+  const offN = !['a', 'b'].includes(S.method), offT = S.method !== 'c';
+  $('#nWin').disabled = offN; $('#nWin').closest('.ctl').classList.toggle('off', offN);
+  $('#tWin').disabled = offT; $('#tWin').closest('.ctl').classList.toggle('off', offT);
   $('#dOut').textContent = S.grantDelay + '개월'; $('#eOut').textContent = (S.expPct > 0 ? '+' : '') + S.expPct + '%'; $('#hOut').textContent = S.horizon + '개월';
 }
 function bindControls() {
@@ -794,7 +797,10 @@ function start() {
   if (window.RUNWAY_DATA && !uploadOnly) return setBase(clone(window.RUNWAY_DATA), 'embedded');
   showEmpty();
 }
-window.addEventListener('beforeprint', () => { const d = document.getElementById('methods'); if (d) d.open = true; Object.values(charts).forEach((c) => c.resize()); });
+const fitCharts = () => Object.values(charts).forEach((c) => { c.resize(); });
+window.addEventListener('beforeprint', () => { const d = document.getElementById('methods'); if (d) d.open = true; fitCharts(); });
+window.addEventListener('afterprint', fitCharts);
+if (window.matchMedia) window.matchMedia('print').addEventListener('change', fitCharts);
 window.addEventListener('DOMContentLoaded', () => {
   if (typeof Chart === 'undefined') { document.body.insertAdjacentHTML('afterbegin', '<div class="card" style="margin:16px;color:#c00">Chart.js(CDN)를 불러오지 못했습니다. 인터넷 연결을 확인하세요.</div>'); return; }
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily; Chart.defaults.color = '#374151';
